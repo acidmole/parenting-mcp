@@ -1,0 +1,30 @@
+{
+  "name": "parenting-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for parenting tools: Wilma school system + WhatsApp messaging",
+  "type": "module",
+  "bin": {
+    "parenting-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node build/index.js",
+    "setup": "node build/setup.js",
+    "whatsapp-auth": "node build/whatsapp-auth.js",
+    "scheduler": "node build/scheduler.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@whiskeysockets/baileys": "^6.7.16",
+    "node-cron": "^4.2.1",
+    "pino": "^10.3.1",
+    "qrcode-terminal": "^0.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.7.0"
+  }
+}
