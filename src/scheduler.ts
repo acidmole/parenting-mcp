@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { getWilmaSchedule, getWilmaHomework, getWilmaExams } from "./services/wilma.js";
 import { sendMessage, disconnect } from "./services/whatsapp.js";
 import { loadConfig, isConfigured, type AppConfig } from "./services/config.js";
+import { logError } from "./services/error-log.js";
 
 const config = await loadConfig();
 
@@ -128,10 +129,11 @@ async function sendHomeworkSummary(): Promise<void> {
 async function sendEveningSchedule(): Promise<void> {
   console.log(`[${new Date().toISOString()}] Running evening schedule...`);
 
-  const [scheduleData, examsData] = await Promise.all([
-    getWilmaSchedule({ when: "tomorrow" }) as Promise<{ students: StudentSchedule[] }>,
-    getWilmaExams(20) as Promise<{ students: StudentExams[] }>,
-  ]);
+  // Run sequentially — both use runWilmaAllProfiles which writes to the shared
+  // Wilma config file to switch profiles. Running in parallel causes a race
+  // condition where one call overwrites the profile before the other's CLI reads it.
+  const scheduleData = await getWilmaSchedule({ when: "tomorrow" }) as { students: StudentSchedule[] };
+  const examsData = await getWilmaExams(20) as { students: StudentExams[] };
 
   const tomorrow = tomorrowISO();
   const lines: string[] = [];
@@ -249,21 +251,24 @@ console.log(`Target: ${config.whatsapp.targetName} (${TARGET_JID})`);
 const { homeworkCron, eveningCron, weeklyCron, timezone } = config.schedule;
 
 cron.schedule(homeworkCron, () => {
-  sendHomeworkSummary().catch((err) =>
-    console.error("Homework summary failed:", err)
-  );
+  sendHomeworkSummary().catch((err) => {
+    void logError("scheduler", "homework summary failed", err);
+    console.error("Homework summary failed:", err);
+  });
 }, { timezone });
 
 cron.schedule(eveningCron, () => {
-  sendEveningSchedule().catch((err) =>
-    console.error("Evening schedule failed:", err)
-  );
+  sendEveningSchedule().catch((err) => {
+    void logError("scheduler", "evening schedule failed", err);
+    console.error("Evening schedule failed:", err);
+  });
 }, { timezone });
 
 cron.schedule(weeklyCron, () => {
-  sendWeeklyOverview().catch((err) =>
-    console.error("Weekly overview failed:", err)
-  );
+  sendWeeklyOverview().catch((err) => {
+    void logError("scheduler", "weekly overview failed", err);
+    console.error("Weekly overview failed:", err);
+  });
 }, { timezone });
 
 console.log("Scheduled:");

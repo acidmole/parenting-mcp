@@ -9,6 +9,7 @@ import qrcode from "qrcode-terminal";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rm } from "node:fs/promises";
+import { logError } from "./error-log.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_DIR = resolve(__dirname, "../../auth_store");
@@ -44,11 +45,11 @@ async function initConnection(): Promise<void> {
       if (!settled) {
         settled = true;
         resetConnection();
-        reject(
-          new Error(
-            "WhatsApp connection timed out (60s). If this is first login, scan the QR code in the terminal running the MCP server."
-          )
+        const err = new Error(
+          "WhatsApp connection timed out (60s). If this is first login, scan the QR code in the terminal running the MCP server."
         );
+        void logError("whatsapp", "connection timeout", err);
+        reject(err);
       }
     }, 60_000);
 
@@ -80,6 +81,7 @@ async function initConnection(): Promise<void> {
         resetConnection();
 
         if (statusCode === DisconnectReason.loggedOut) {
+          void logError("whatsapp", "session expired (loggedOut), clearing auth", `statusCode=${statusCode}`);
           console.error(
             "\n⚠️  WhatsApp session expired — clearing old session and requesting new QR code...\n"
           );
@@ -93,7 +95,8 @@ async function initConnection(): Promise<void> {
               } else {
                 // Was connected, session expired mid-run — reconnect for next use
                 connectionPromise = initConnection();
-                connectionPromise.catch(() => {
+                connectionPromise.catch((err) => {
+                  void logError("whatsapp", "re-auth failed (QR not scanned in time)", err);
                   console.error("WhatsApp re-auth failed. QR code was not scanned in time.");
                   resetConnection();
                 });
@@ -105,11 +108,11 @@ async function initConnection(): Promise<void> {
 
         if (!settled) {
           settled = true;
-          reject(
-            new Error(
-              `WhatsApp disconnected (code ${statusCode}), will retry`
-            )
+          const err = new Error(
+            `WhatsApp disconnected (code ${statusCode}), will retry`
           );
+          void logError("whatsapp", "initial connection closed", err);
+          reject(err);
         } else {
           console.error(
             `WhatsApp disconnected (code ${statusCode}), will reconnect on next use`
@@ -167,10 +170,12 @@ export async function sendMessage(
       return;
     } catch (error) {
       if (attempt === 0) {
+        void logError("whatsapp", `send failed to ${targetJid} (retrying)`, error);
         console.error("WhatsApp send failed, reconnecting and retrying...");
         resetConnection();
         continue;
       }
+      void logError("whatsapp", `send failed to ${targetJid} (giving up)`, error);
       throw error;
     }
   }

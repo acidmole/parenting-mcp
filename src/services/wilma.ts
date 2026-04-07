@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { logError } from "./error-log.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -56,9 +57,11 @@ async function runWilmaRaw(args: string[], retries = 2): Promise<unknown> {
       if ("stderr" in error) {
         const stderr = (error as { stderr: string }).stderr;
         if (stderr.includes("login") || stderr.includes("auth")) {
-          throw new Error(
+          const authErr = new Error(
             "Wilma authentication required. Run 'wilma' interactively to log in first."
           );
+          void logError("wilma", `auth failure running 'wilma ${args.join(" ")}'`, stderr.trim() || authErr);
+          throw authErr;
         }
         // Retry on HTTP 403 — session likely expired, CLI will re-authenticate
         if (stderr.includes("HTTP 403") && retries > 0) {
@@ -66,6 +69,8 @@ async function runWilmaRaw(args: string[], retries = 2): Promise<unknown> {
           return runWilmaRaw(args, retries - 1);
         }
       }
+      const stderrText = "stderr" in error ? (error as { stderr: string }).stderr : "";
+      void logError("wilma", `CLI error running 'wilma ${args.join(" ")}'`, stderrText.trim() || error);
       throw new Error(`Wilma CLI error: ${error.message}`);
     }
     throw error;
@@ -85,8 +90,14 @@ async function runWilmaAllProfiles(args: string[]): Promise<unknown[]> {
     for (const profile of config.profiles) {
       config.lastProfileId = profile.id;
       await writeConfig(config);
-      const result = await runWilmaRaw(args);
-      results.push(result);
+      try {
+        const result = await runWilmaRaw(args);
+        results.push(result);
+      } catch (err) {
+        // Log and continue with remaining profiles so one broken profile
+        // doesn't prevent fetching data for the others.
+        void logError("wilma", `profile '${profile.id}' failed for 'wilma ${args.join(" ")}'`, err);
+      }
     }
   } finally {
     config.lastProfileId = originalProfileId;
