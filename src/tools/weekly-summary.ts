@@ -33,10 +33,25 @@ function getNextWeekDates(): string[] {
   return dates;
 }
 
+/** Extract students array from Wilma CLI response ({ students: [...] } or flat array). */
+function extractStudents(data: unknown): Record<string, unknown>[] {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const d = data as Record<string, unknown>;
+    if (Array.isArray(d.students)) return d.students as Record<string, unknown>[];
+  }
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  return [];
+}
+
+function firstName(fullName: string): string {
+  return fullName.split(" ")[0];
+}
+
 function formatWeeklySummary(
   schedule: unknown,
   exams: unknown,
-  news: unknown
+  news: unknown,
+  weekDates: string[]
 ): string {
   const lines: string[] = [];
   const today = new Date();
@@ -49,40 +64,47 @@ function formatWeeklySummary(
   lines.push(`📋 *Viikkoyhteenveto - Viikko ${weekNum}*`);
   lines.push("");
 
-  // Schedule
-  lines.push("📚 *Viikon lukujärjestys:*");
-  if (schedule && typeof schedule === "object") {
-    if (Array.isArray(schedule)) {
-      for (const day of schedule) {
-        const d = day as Record<string, unknown>;
-        lines.push(`  ${d.date || d.day || ""}: ${d.subject || JSON.stringify(d)}`);
-      }
-    } else {
-      lines.push(JSON.stringify(schedule, null, 2));
-    }
-  } else {
-    lines.push("  Ei aikataulutietoja.");
-  }
-  lines.push("");
+  // Exams — grouped by student
+  const students = extractStudents(exams);
+  const mondayStr = weekDates[0];
+  const fridayStr = weekDates[4];
+  const examLines: string[] = [];
 
-  // Exams
-  lines.push("🔔 *Kokeet:*");
-  if (Array.isArray(exams) && exams.length > 0) {
-    for (const exam of exams) {
-      const e = exam as Record<string, unknown>;
-      lines.push(`  • ${e.date || ""} ${e.subject || ""}: ${e.description || e.topic || ""}`);
+  for (const student of students) {
+    const info = student.student as Record<string, unknown> | undefined;
+    const name = firstName((info?.name as string) || (student.name as string) || "Oppilas");
+    const items = (student.items || []) as Record<string, unknown>[];
+    const weekExams = items.filter(
+      (e) => (e.date as string) >= mondayStr && (e.date as string) <= fridayStr
+    );
+    for (const exam of weekExams) {
+      const d = new Date((exam.date as string) + "T12:00:00");
+      const dayStr = d.toLocaleDateString("fi-FI", { weekday: "short", day: "numeric", month: "numeric" });
+      examLines.push(`  • ${dayStr} ${name}: ${exam.subject || ""}${exam.topic ? ` — ${exam.topic}` : ""}`);
     }
+  }
+
+  lines.push("🔔 *Kokeet:*");
+  if (examLines.length > 0) {
+    examLines.sort();
+    lines.push(...examLines);
   } else {
     lines.push("  Ei kokeita tällä viikolla! 🎉");
   }
   lines.push("");
 
-  // News
-  if (Array.isArray(news) && news.length > 0) {
+  // News — extract from { students: [{ items: [...] }] } structure
+  const newsStudents = extractStudents(news);
+  const allNews: Record<string, unknown>[] = [];
+  for (const student of newsStudents) {
+    const items = (student.items || []) as Record<string, unknown>[];
+    allNews.push(...items);
+  }
+
+  if (allNews.length > 0) {
     lines.push("📢 *Tiedotteet:*");
-    for (const item of news.slice(0, 5)) {
-      const n = item as Record<string, unknown>;
-      lines.push(`  • ${n.title || n.subject || ""} (${n.date || ""})`);
+    for (const n of allNews.slice(0, 5)) {
+      lines.push(`  • ${n.title || n.subject || ""}`);
     }
     lines.push("");
   }
@@ -107,26 +129,13 @@ function getISOWeek(date: Date): number {
 export async function handler(args: unknown) {
   const { group_jid } = SendWeeklySummarySchema.parse(args);
 
-  // Fetch week schedule, exams for 7 days, and recent news
-  const [schedule, exams, news] = await Promise.all([
-    getWilmaSchedule({ when: "week" }),
-    getWilmaExams(20),
-    getWilmaNews(10),
-  ]);
+  // Fetch sequentially — all use runWilmaAllProfiles which writes to shared config file
+  const weekDates = getNextWeekDates();
+  const schedule = await getWilmaSchedule({ when: "week" });
+  const exams = await getWilmaExams(50);
+  const news = await getWilmaNews(10);
 
-  // Filter exams to next 7 days
-  const now = new Date();
-  const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  let filteredExams = exams;
-  if (Array.isArray(exams)) {
-    filteredExams = exams.filter((exam: Record<string, unknown>) => {
-      if (!exam.date) return true;
-      const examDate = new Date(exam.date as string);
-      return examDate >= now && examDate <= cutoff;
-    });
-  }
-
-  const message = formatWeeklySummary(schedule, filteredExams, news);
+  const message = formatWeeklySummary(schedule, exams, news, weekDates);
   await sendMessage(group_jid, message, true);
 
   return {

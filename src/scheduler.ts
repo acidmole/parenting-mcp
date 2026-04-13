@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { execFile } from "node:child_process";
 import { getWilmaSchedule, getWilmaHomework, getWilmaExams } from "./services/wilma.js";
 import { sendMessage, disconnect } from "./services/whatsapp.js";
 import { loadConfig, isConfigured, type AppConfig } from "./services/config.js";
@@ -276,6 +277,37 @@ console.log(`  - Homework summary: ${homeworkCron}`);
 console.log(`  - Tomorrow's schedule: ${eveningCron}`);
 console.log(`  - Weekly overview: ${weeklyCron}`);
 console.log("Running...");
+
+// --- systemd watchdog heartbeat ---
+// If WatchdogSec is configured, send periodic WATCHDOG=1 to systemd.
+// When the event loop is blocked (e.g. Baileys hang), heartbeats stop
+// and systemd will kill & restart the process.
+
+function sdNotify(...args: string[]): void {
+  if (!process.env.NOTIFY_SOCKET) return;
+  execFile("systemd-notify", args, () => {});
+}
+
+function startWatchdog(): void {
+  if (!process.env.NOTIFY_SOCKET) return;
+
+  sdNotify("--ready");
+
+  const intervalMs = Math.max(
+    5_000,
+    Math.floor((Number(process.env.WATCHDOG_USEC) || 120_000_000) / 2 / 1000)
+  );
+
+  const timer = setInterval(() => {
+    sdNotify("WATCHDOG=1");
+  }, intervalMs);
+
+  timer.unref();
+
+  console.log(`Watchdog heartbeat every ${intervalMs / 1000}s`);
+}
+
+startWatchdog();
 
 // Graceful shutdown
 function shutdown() {

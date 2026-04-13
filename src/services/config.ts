@@ -35,8 +35,8 @@ const DEFAULT_CONFIG: AppConfig = {
     targetName: "",
   },
   schedule: {
-    homeworkCron: "2 16 * * *",
-    eveningCron: "3 20 * * *",
+    homeworkCron: "2 16 * * 1-5",
+    eveningCron: "3 20 * * 0-4",
     weeklyCron: "57 17 * * 0",
     timezone: "Europe/Helsinki",
   },

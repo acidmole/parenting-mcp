@@ -173,3 +173,7 @@ parenting_mcp/
 ├── auth_store/               # WhatsApp-sessio (gitignored)
 └── package.json
 ```
+
+## Huomautus WhatsAppin käytöstä
+
+Tämä ohjelma käyttää epävirallista WhatsApp Web -rajapintaa ([Baileys](https://github.com/WhiskeySockets/Baileys)), joka ei ole Metan/WhatsAppin hyväksymä tai tukema. WhatsAppin käyttöehdot saattavat kieltää epävirallisten API-rajapintojen käytön, ja tilin käyttö tällä tavalla voi johtaa tilin rajoittamiseen tai sulkemiseen. Käyttäjä on itse vastuussa ohjelman käytöstä ja mahdollisista seurauksista.

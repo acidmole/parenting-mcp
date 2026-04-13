@@ -34,36 +34,43 @@ function formatDailySummary(data: unknown): string {
   if (data && typeof data === "object") {
     const d = data as Record<string, unknown>;
 
-    // Students summary
+    // Students summary — Wilma CLI returns { students: [{ student: {...}, summary: {...} }] }
     if (Array.isArray(d.students)) {
       for (const student of d.students) {
         const s = student as Record<string, unknown>;
-        lines.push(`👤 *${s.name || "Oppilas"}*`);
+        const info = s.student as Record<string, unknown> | undefined;
+        const summary = s.summary as Record<string, unknown> | undefined;
+        const name = info?.name || s.name || "Oppilas";
+        lines.push(`👤 *${name}*`);
+
+        const schedule = (summary?.todaySchedule ?? s.schedule) as unknown[] | undefined;
+        const homework = (summary?.recentHomework ?? s.homework) as unknown[] | undefined;
+        const exams = (summary?.upcomingExams ?? s.exams) as unknown[] | undefined;
 
         // Schedule
-        if (Array.isArray(s.schedule) && s.schedule.length > 0) {
+        if (Array.isArray(schedule) && schedule.length > 0) {
           lines.push("📚 Tunnit:");
-          for (const lesson of s.schedule) {
+          for (const lesson of schedule) {
             const l = lesson as Record<string, unknown>;
-            lines.push(`  • ${l.time || ""} ${l.subject || l.course || ""}`);
+            lines.push(`  • ${l.start || l.time || ""} ${l.subject || l.course || ""}`);
           }
         }
 
         // Homework
-        if (Array.isArray(s.homework) && s.homework.length > 0) {
+        if (Array.isArray(homework) && homework.length > 0) {
           lines.push("📝 Kotitehtävät:");
-          for (const hw of s.homework) {
+          for (const hw of homework) {
             const h = hw as Record<string, unknown>;
-            lines.push(`  • ${h.subject || ""}: ${h.description || h.topic || ""}`);
+            lines.push(`  • ${h.subject || ""}: ${h.homework || h.topic || h.description || ""}`);
           }
         }
 
         // Exams
-        if (Array.isArray(s.exams) && s.exams.length > 0) {
+        if (Array.isArray(exams) && exams.length > 0) {
           lines.push("🔔 Tulevat kokeet:");
-          for (const exam of s.exams) {
+          for (const exam of exams) {
             const e = exam as Record<string, unknown>;
-            lines.push(`  • ${e.date || ""} ${e.subject || ""}: ${e.description || e.topic || ""}`);
+            lines.push(`  • ${e.date || ""} ${e.subject || ""}: ${e.topic || e.description || ""}`);
           }
         }
 
