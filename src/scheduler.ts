@@ -298,7 +298,24 @@ function startWatchdog(): void {
     Math.floor((Number(process.env.WATCHDOG_USEC) || 120_000_000) / 2 / 1000)
   );
 
+  // Track wall-clock time to detect suspend/resume gaps.
+  // node-cron uses setTimeout internally, which breaks after system suspend
+  // because timers freeze during sleep. When we detect a gap, we exit so
+  // systemd restarts us with fresh, working timers.
+  let lastTick = Date.now();
+  const SUSPEND_THRESHOLD_MS = intervalMs * 3;
+
   const timer = setInterval(() => {
+    const now = Date.now();
+    const elapsed = now - lastTick;
+    lastTick = now;
+
+    if (elapsed > SUSPEND_THRESHOLD_MS) {
+      console.log(`Detected system resume (gap: ${Math.round(elapsed / 1000)}s). Restarting to fix cron timers...`);
+      disconnect();
+      process.exit(0); // systemd Restart=on-failure restarts us
+    }
+
     sdNotify("WATCHDOG=1");
   }, intervalMs);
 
