@@ -20,6 +20,15 @@ let connectionPromise: Promise<void> | null = null;
 let lastSendTime = 0;
 
 function resetConnection(): void {
+  if (sock) {
+    try {
+      sock.ev.removeAllListeners("creds.update");
+      sock.ev.removeAllListeners("connection.update");
+      sock.end(undefined);
+    } catch {
+      // socket may already be dead — ignore
+    }
+  }
   sock = null;
   connectionPromise = null;
 }
