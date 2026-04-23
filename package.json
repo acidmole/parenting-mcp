@@ -12,7 +12,8 @@
     "inspect": "npx @modelcontextprotocol/inspector node build/index.js",
     "setup": "node build/setup.js",
     "whatsapp-auth": "node build/whatsapp-auth.js",
-    "scheduler": "node build/scheduler.js"
+    "scheduler": "node build/scheduler.js",
+    "trigger": "node build/trigger.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

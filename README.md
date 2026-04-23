@@ -117,6 +117,27 @@ systemctl --user enable --now parenting-scheduler
 journalctl --user -u parenting-scheduler -f
 ```
 
+### Viestien manuaalinen lähetys (trigger)
+
+Jos kone on ollut pois päältä cron-ajankohdan aikana, voit lähettää viestit jälkikäteen:
+
+```bash
+# Pysäytä scheduler (muuten kaksi WhatsApp-sessiota taistelee samasta auth_storesta)
+systemctl --user stop parenting-scheduler
+
+# Lähetä haluamasi viesti(t)
+npm run trigger -- homework
+npm run trigger -- evening             # huomisen aikataulu (= kuin Sun-Thu ilta-cron)
+npm run trigger -- evening:today       # tämän päivän aikataulu (esim. viikonloppu-paussin jälkeen)
+npm run trigger -- weekly
+npm run trigger -- homework,evening    # pilkulla eroteltuna useita
+
+# Käynnistä scheduler takaisin päälle
+systemctl --user start parenting-scheduler
+```
+
+Trigger ajaa täsmälleen saman logiikan kuin cron: `homework` käyttää kuluvaa päivää, `evening` ja `weekly` huomista/ensi viikkoa.
+
 ### MCP-palvelin (Claude-integraatio)
 
 ```bash
@@ -162,6 +183,8 @@ parenting_mcp/
 ├── src/
 │   ├── index.ts              # MCP-palvelin
 │   ├── scheduler.ts          # Ajastetut WhatsApp-viestit
+│   ├── jobs.ts               # Jaetut työt (käyttävät scheduler + trigger)
+│   ├── trigger.ts            # Manuaalinen viestien lähetys (CLI)
 │   ├── setup.ts              # Interaktiivinen setup
 │   ├── whatsapp-auth.ts      # WhatsApp QR-skannaus (standalone)
 │   ├── services/
