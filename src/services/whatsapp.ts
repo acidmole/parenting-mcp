@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   Browsers,
   type WASocket,
+  type GroupMetadata,
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
@@ -18,12 +19,15 @@ const MIN_SEND_INTERVAL_MS = 2000;
 let sock: WASocket | null = null;
 let connectionPromise: Promise<void> | null = null;
 let lastSendTime = 0;
+const groupCache = new Map<string, GroupMetadata>();
 
 function resetConnection(): void {
   if (sock) {
     try {
       sock.ev.removeAllListeners("creds.update");
       sock.ev.removeAllListeners("connection.update");
+      sock.ev.removeAllListeners("groups.update");
+      sock.ev.removeAllListeners("group-participants.update");
       sock.end(undefined);
     } catch {
       // socket may already be dead — ignore
@@ -31,6 +35,7 @@ function resetConnection(): void {
   }
   sock = null;
   connectionPromise = null;
+  groupCache.clear();
 }
 
 async function initConnection(): Promise<void> {
@@ -43,9 +48,45 @@ async function initConnection(): Promise<void> {
     logger,
     version: [2, 3000, 1034074495],
     browser: Browsers.macOS("Desktop"),
+    cachedGroupMetadata: async (jid) => groupCache.get(jid),
   });
 
   sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("groups.update", (updates) => {
+    for (const u of updates) {
+      if (!u.id) continue;
+      const existing = groupCache.get(u.id);
+      if (existing) {
+        groupCache.set(u.id, { ...existing, ...u } as GroupMetadata);
+      }
+    }
+  });
+
+  sock.ev.on("group-participants.update", (update) => {
+    const existing = groupCache.get(update.id);
+    if (!existing) return;
+    let participants = existing.participants;
+    if (update.action === "add") {
+      const known = new Set(participants.map((p) => p.id));
+      participants = [
+        ...participants,
+        ...update.participants
+          .filter((id) => !known.has(id))
+          .map((id) => ({ id, isAdmin: false, isSuperAdmin: false })),
+      ];
+    } else if (update.action === "remove") {
+      const removed = new Set(update.participants);
+      participants = participants.filter((p) => !removed.has(p.id));
+    } else if (update.action === "promote" || update.action === "demote") {
+      const changed = new Set(update.participants);
+      const isAdmin = update.action === "promote";
+      participants = participants.map((p) =>
+        changed.has(p.id) ? { ...p, isAdmin } : p
+      );
+    }
+    groupCache.set(update.id, { ...existing, participants });
+  });
 
   return new Promise<void>((resolvePromise, reject) => {
     let settled = false;
@@ -77,6 +118,18 @@ async function initConnection(): Promise<void> {
         if (!settled) {
           settled = true;
           console.error("WhatsApp connected successfully");
+          // Pre-warm group metadata cache so per-send fetches don't happen.
+          // Errors are non-fatal — sends will fall back to live fetch.
+          sock!
+            .groupFetchAllParticipating()
+            .then((groups) => {
+              for (const [jid, meta] of Object.entries(groups)) {
+                groupCache.set(jid, meta);
+              }
+            })
+            .catch((err) =>
+              void logError("whatsapp", "group cache prewarm failed", err)
+            );
           resolvePromise();
         }
       }
