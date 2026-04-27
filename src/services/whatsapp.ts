@@ -49,6 +49,15 @@ async function initConnection(): Promise<void> {
     version: [2, 3000, 1034074495],
     browser: Browsers.macOS("Desktop"),
     cachedGroupMetadata: async (jid) => groupCache.get(jid),
+    // Send-only bot: skip baileys' on-connect chatter.
+    // - shouldSyncHistoryMessage:false skips resyncAppState(ALL_WA_PATCH_NAMES)
+    //   (the big "history sync" — chats, contacts, settings, etc.)
+    // - fireInitQueries:false skips fetchProps + fetchBlocklist + fetchPrivacySettings
+    // - markOnlineOnConnect:false avoids presence broadcast/subscriptions
+    shouldSyncHistoryMessage: () => false,
+    fireInitQueries: false,
+    markOnlineOnConnect: false,
+    syncFullHistory: false,
   });
 
   sock.ev.on("creds.update", saveCreds);
